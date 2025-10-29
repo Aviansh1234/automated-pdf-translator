@@ -1,0 +1,6 @@
+selenium
+pdf2image
+Pillow
+numpy
+requests
+PyQt5
