@@ -60,15 +60,15 @@ def drag_and_drop_image(driver, image_path):
     driver.execute_script(js, b64_image, file_name)
     return True
 
-def translate_image(driver, image_path, output_path, source_lang='ja', target_lang='en'):
+def translate_image(driver, image_path, output_path, source_lang='auto', target_lang='en'):
     if not os.path.exists(image_path):
         raise FileNotFoundError(f"Image file not found: {image_path}")
     try:
         driver.get(f"https://translate.google.com/?sl={source_lang}&tl={target_lang}&op=images&hl=en")
         try:
             WebDriverWait(driver, 5).until(
-                EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Accept all')]")
-            )).click()
+                EC.element_to_be_clickable((By.XPATH, "//button[contains(., 'Accept all')]"))
+            ).click()
             time.sleep(1)
         except:
             pass
@@ -190,11 +190,21 @@ def images_are_identical(img_path1, img_path2):
         return False
 
 def images_to_pdf(image_paths, output_pdf_path):
-    images = [Image.open(img) for img in image_paths]
-    images[0].save(
-        output_pdf_path, save_all=True, append_images=images[1:],
-        resolution=200, quality=95
-    )
+    if not image_paths:
+        raise ValueError("No images to save to PDF")
+    imgs = []
+    try:
+        for p in image_paths:
+            im = Image.open(p).convert('RGB')
+            imgs.append(im)
+        first, rest = imgs[0], imgs[1:]
+        first.save(output_pdf_path, "PDF", save_all=True, append_images=rest, resolution=200)
+    finally:
+        for im in imgs:
+            try:
+                im.close()
+            except Exception:
+                pass
 
 def translate_image_worker(args_tuple):
     img_path, translated_path, source_lang, target_lang, max_attempts = args_tuple
@@ -276,14 +286,17 @@ def translate_image_batch(batch_args):
     return results
 
 def main():
-    parser = argparse.ArgumentParser(description='Translate PDF from Japanese to English')
+    parser = argparse.ArgumentParser(
+        description='Translate a PDF using automatic source-language detection or a specified source language.',
+        epilog='Run without command-line arguments to launch the graphical user interface (GUI).'
+    )
     parser.add_argument('-i', '--input', required=True, help='Input PDF file path')
     parser.add_argument('-o', '--output', default='translated_output.pdf', help='Output PDF file path')
-    parser.add_argument('-s', '--source', default='ja', help='Source language code (default: ja)')
+    parser.add_argument('-s', '--source', default='auto', help='Source language code (default: auto)')
     parser.add_argument('-t', '--target', default='en', help='Target language code (default: en)')
     parser.add_argument('--keep-temp', action='store_true', help='Keep temporary image files')
     parser.add_argument('--dpi', type=int, default=200, help='DPI for image conversion (default: 200)')
-    parser.add_argument('--max-attempts', type=int, default=2, help='Max attempts per page (default: 2)')
+    parser.add_argument('--max-attempts', type=int, default=0, help='Max attempts per page (0=∞, default: 0)')
     parser.add_argument('--workers', type=int, default=4, help='Number of concurrent workers (default: 4)')
     args = parser.parse_args()
     if not os.path.isfile(args.input):
@@ -546,15 +559,15 @@ class TranslatorGUI(QWidget):
         # Settings
         settings = QFormLayout()
         self.dpi_spin = QSpinBox(); self.dpi_spin.setRange(72, 600); self.dpi_spin.setValue(200)
-        self.max_attempts_spin = QSpinBox(); self.max_attempts_spin.setRange(0, 1000); self.max_attempts_spin.setValue(2)
+        self.max_attempts_spin = QSpinBox(); self.max_attempts_spin.setRange(0, 1000); self.max_attempts_spin.setValue(0)
         self.workers_spin = QSpinBox(); self.workers_spin.setRange(1, 16); self.workers_spin.setValue(4)
-        self.source_edit = QLineEdit('ja')
+        self.source_edit = QLineEdit('auto')
         self.target_edit = QLineEdit('en')
         settings.addRow('DPI:', self.dpi_spin)
         settings.addRow('Max Attempts (0=∞):', self.max_attempts_spin)
-        settings.addRow('Workers:', self.workers_spin)
-        settings.addRow('Source Lang:', self.source_edit)
-        settings.addRow('Target Lang:', self.target_edit)
+        settings.addRow('Workers (per PDF):', self.workers_spin)
+        settings.addRow('Source Language (auto-detect):', self.source_edit)
+        settings.addRow('Target Language:', self.target_edit)
         vbox.addLayout(settings)
         self.tabs.addTab(main_tab, 'Main')
 
